@@ -5,7 +5,10 @@ import java.util.List;
 
 import android.app.Activity;
 import android.app.ProgressDialog;
+import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.preference.PreferenceManager;
 import android.text.TextUtils;
 import android.view.View;
 import android.view.Window;
@@ -31,27 +34,27 @@ public class ChooseAreaActivity extends Activity {
 	public static final int LEVEL_CITY = 1;
 	public static final int LEVEL_COUNTY = 2;
 	
-	private ProgressDialog progressDialog;
-	private TextView titleText;
-	private ListView listView;
+	private ProgressDialog progressDialog;  // 进度条
+	private TextView titleText;             //头
+	private ListView listView;              
 	private ArrayAdapter<String> adapter;
-	private CoolWeatherDB coolWeatherDB;
-	private List<String> dataList = new ArrayList<String>();
+	private CoolWeatherDB coolWeatherDB;      //这是一个单例类
+	private List<String> dataList = new ArrayList<String>(); //dataList
 	
 	/**
 	 * 省列表
 	 */
-	private List<Province> provinceList;
+	private List<Province> provinceList;   //省列表
 	
 	/**
 	 * 市列表
 	 */
-	private List<City> cityList;
+	private List<City> cityList;           //市列表
 	
 	/**
 	 * 县列表
-	 */
-	private List<County> countyList;
+	 */  
+	private List<County> countyList;       //县列表
 	
 	/**
 	 * 选中的省份
@@ -66,19 +69,30 @@ public class ChooseAreaActivity extends Activity {
 	/**
 	 * 当前选中的级别
 	 */
-	private int currentLevel;
+	private int currentLevel;            //共有省市县三种可能
 	
 	@Override
 	protected void onCreate(Bundle savedInstanceState){
 		super.onCreate(savedInstanceState);
-		requestWindowFeature(Window.FEATURE_NO_TITLE);
-		setContentView(R.layout.choose_area);
-		listView = (ListView) findViewById(R.id.list_view);
-		titleText = (TextView) findViewById(R.id.title_text);
-		adapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1,dataList);
-		listView.setAdapter(adapter);
-		coolWeatherDB = CoolWeatherDB.getInstance(this);
-		listView.setOnItemClickListener(new OnItemClickListener() {
+		
+		
+		SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+		if (prefs.getBoolean("city_selected", false)) {
+			Intent intent = new Intent(this,WeatherActivity.class);
+			startActivity(intent);
+			finish();
+			return;
+		}
+		
+		
+		requestWindowFeature(Window.FEATURE_NO_TITLE);        //隐藏标题栏
+		setContentView(R.layout.choose_area);                 //加载页面布局
+		listView = (ListView) findViewById(R.id.list_view);   
+		titleText = (TextView) findViewById(R.id.title_text); 
+		adapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1,dataList);//布局和data传递进适配器
+		listView.setAdapter(adapter);                         //适配listview
+		coolWeatherDB = CoolWeatherDB.getInstance(this);      //获得coolWeather实例
+		listView.setOnItemClickListener(new OnItemClickListener() {//设置点击响应事件
 			@Override
 			public void onItemClick(AdapterView<?>arg0,View view ,int index,long arg3){
 				if (currentLevel == LEVEL_PROVINCE) {
@@ -87,6 +101,12 @@ public class ChooseAreaActivity extends Activity {
 				}else if (currentLevel == LEVEL_CITY) {
 					selectedCity = cityList.get(index);
 					queryCounties();
+				}else if (currentLevel ==LEVEL_COUNTY) {
+					String countyCode = countyList.get(index).getCountyCode();
+					Intent intent = new Intent(ChooseAreaActivity.this,WeatherActivity.class);
+					intent.putExtra("county_code", countyCode);
+					startActivity(intent);
+					finish();
 				}
 			}
 		});
@@ -98,14 +118,15 @@ public class ChooseAreaActivity extends Activity {
 	 */
 	private void queryProvinces(){
 		
-		provinceList = coolWeatherDB.loadProvinces();
+		provinceList = coolWeatherDB.loadProvinces();//加载省份
 		if (provinceList.size()>0) {
-			dataList.clear();
+			dataList.clear();               //先清空
 			for (Province province : provinceList) {
 				dataList.add(province.getProvinceName());
 			}
-			adapter.notifyDataSetChanged();/////
-			listView.setSelection(0);
+			adapter.notifyDataSetChanged();//notifyDataSetChanged()可以在修改适配器绑定的数组后，
+			                               //不用重新刷新Activity，通知Activity更新ListView。
+			listView.setSelection(0);      //定位到头部
 			titleText.setText("你好少年！");
 			currentLevel = LEVEL_PROVINCE;
 		}else {
@@ -117,17 +138,17 @@ public class ChooseAreaActivity extends Activity {
 	 * 查询选中省内所有的市，优先从数据库查询，如果没有查询到再去服务器上查询。
 	 */
 	private void queryCities() {
-		cityList = coolWeatherDB.loadCities(selectedProvince.getId());
+		cityList = coolWeatherDB.loadCities(selectedProvince.getId());//加载市city列表
 		if (cityList.size() > 0) {
-			dataList.clear();
-			for (City city : cityList) {
+			dataList.clear();            //先清空
+			for (City city : cityList) {   //for each 循环
 				dataList.add(city.getCityName());
 			}
 			adapter.notifyDataSetChanged();
 			listView.setSelection(0);
-			titleText.setText(selectedProvince.getProvinceName());
+			titleText.setText(selectedProvince.getProvinceName());//修改 title Text内容
 			currentLevel = LEVEL_CITY;
-		} else {
+		} else {//若从数据库加载失败，则从网络加载
 			queryFromServer(selectedProvince.getProvinceCode(), "city");
 		}
 	}
@@ -154,6 +175,7 @@ public class ChooseAreaActivity extends Activity {
 	/**
 	 * 根据传入的代号和类型从服务器上查询省市县数据
 	 */
+	//                                       代码                                   省市县
 	private void queryFromServer(final String code, final String type){
 		
 		String address;
@@ -162,7 +184,8 @@ public class ChooseAreaActivity extends Activity {
 		}else {
 			address = "http://www.weather.com.cn/data/list3/city.xml";
 		}
-		showProgressDialog();
+		showProgressDialog(); 
+		//                                  回调函数接口
 		HttpUtil.sendHttpRequest(address, new HttpCallbackListener() {
 			
 			@Override
